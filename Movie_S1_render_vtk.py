@@ -1,4 +1,4 @@
-"""Render the data-derived HERV-K 2005 review.
+"""Render Movie S1 from the corrected HERV-K 2005 tomogram and capsid maps.
 
 This is a scientific visualization of the supplied MRC arrays, not an imagegen
 reconstruction. Geometry stays in the MRC physical coordinate system. Unknown
@@ -26,9 +26,9 @@ import vtk
 from vtk.util.numpy_support import numpy_to_vtk, vtk_to_numpy
 from PIL import Image, ImageDraw, ImageFont
 
-INPUT = next((p for p in (ROOT/'input', ROOT/'inputs') if p.is_dir()), ROOT)
+INPUT = Path(os.environ.get('HERVK_INPUT_DIR', str(next((p for p in (ROOT/'input', ROOT/'inputs') if p.is_dir()), ROOT))))
 CACHE = ROOT / 'render_cache'
-OUT = ROOT / 'rendered'
+OUT = Path(os.environ.get('HERVK_OUTPUT_DIR', str(ROOT / 'rendered')))
 PREVIEW = OUT / 'previews'
 CACHE.mkdir(parents=True, exist_ok=True)
 OUT.mkdir(parents=True, exist_ok=True)
@@ -40,27 +40,41 @@ CAPSID_COUNT = 4
 SCAN_FRAMES = NZ-1
 SCAN_END = 3*SCAN_FRAMES
 OVERVIEW_END = SCAN_END+25
-ZOOM_END = OVERVIEW_END+50
-FIRST_END = ZOOM_END+200
-TRANSITION_END = FIRST_END+50
-TOTAL_FRAMES = TRANSITION_END+200
 TOMOGRAM_CANDIDATES = (
-    '_n2n_unet-medium_HervK_mature_2005_bin6_even(1).mrc',
-    '_n2n_unet-medium_HervK_mature_2005_bin6_even.mrc',
+    'HervK_mature_2005_1_bin6_corrected.mrc',
+    'HervK_mature_2005_1_bin6_corrected(1).mrc',
 )
 # Fifty iterations were selected for a smooth review appearance. They are not
 # recovered from the original session, which was not supplied.
 SMOOTH_ITERATIONS = int(os.environ.get('HERVK_REVIEW_SMOOTHING', '50'))
 SMOOTH_FACTOR = 0.3
-LOW, HIGH = -0.55, 0.45
-YELLOW, PALE_YELLOW, PURPLE = '#FFDB0F', '#FFFF7F', '#8B9CFF'
-# The screenshot identifies cap3 as sushi-roll-like. Original movie zooms
-# first to the multiple assemblies in cap4, then to the polygonal cap1.
-SUSHI_CAPSIDS = (3,)
-MULTIPLE_CAPSID = 4
-FIRST_CAPSID, SECOND_CAPSID = 4, 1
-FIRST_POSE = ((276, 232, 74), 230, -6, 5)
-SECOND_POSE = ((249, 436, 93), 230, -14, 10)
+LOW, HIGH = -1.35, 0.30
+POLYGONAL_COLOR, SUSHI_COLOR, MULTI_COLOR = '#dfbc0d', '#f9f900', '#7076de'
+CLOSEUPS = [
+    dict(index=1, name='Polygonal (nested capsids)', label='Polygonal\n(nested capsids)',
+         color=POLYGONAL_COLOR, pose=((249,436,93),230,-14,10), key='nested_capsids'),
+    dict(index=3, name='Polygonal (Sushi-roll-like)', label='Polygonal\n(Sushi-roll-like)',
+         color=SUSHI_COLOR, pose=((85,377,81),210,0,0), key='sushi_roll_like'),
+    dict(index=4, name='Multi-capsid assemblies', label='Multi-capsid\nassemblies',
+         color=MULTI_COLOR, pose=((276,232,74),230,-6,5), key='multi_capsid_assemblies'),
+]
+
+
+def make_stages():
+    stages = [dict(kind='overview', name='capsid_overview', start=SCAN_END, end=OVERVIEW_END)]
+    cursor = OVERVIEW_END
+    for j, closeup in enumerate(CLOSEUPS):
+        stages.append(dict(kind='zoom' if j == 0 else 'transition',
+                           name='zoom_to_'+closeup['key'], start=cursor, end=cursor+50,
+                           target=j, previous=j-1))
+        cursor += 50
+        stages.append(dict(kind='hold', name=closeup['key'], start=cursor, end=cursor+200,
+                           target=j))
+        cursor += 200
+    return stages, cursor
+
+
+STAGES, TOTAL_FRAMES = make_stages()
 # Brighter neutral surface appearance, selected against the supplied figure.
 # The category RGB palette stays exact; lighting still conveys 3D shape.
 SURFACE_AMBIENT, SURFACE_DIFFUSE, SURFACE_SPECULAR = 0.45, 0.60, 0.05
@@ -68,7 +82,15 @@ KEY_INTENSITY = 0.82
 
 
 def capsid_color(number):
-    return PURPLE if number == MULTIPLE_CAPSID else PALE_YELLOW if number in SUSHI_CAPSIDS else YELLOW
+    return MULTI_COLOR if number == 4 else SUSHI_COLOR if number == 3 else POLYGONAL_COLOR
+
+
+def resolve_capsid(number):
+    for name in (f'2005_capsid_{number}(1).mrc', f'2005_capsid_{number}.mrc'):
+        path = INPUT/name
+        if path.is_file():
+            return path
+    raise FileNotFoundError(f'Missing capsid map {number} in {INPUT}')
 
 
 def resolve_tomogram():
@@ -76,7 +98,7 @@ def resolve_tomogram():
         path = INPUT/name
         if path.is_file():
             return path
-    raise FileNotFoundError('Missing denoised 2005 tomogram: '+', '.join(TOMOGRAM_CANDIDATES))
+    raise FileNotFoundError('Missing corrected 2005 tomogram: '+', '.join(TOMOGRAM_CANDIDATES))
 
 
 def ease(t):
@@ -146,8 +168,9 @@ def smooth_equal_neighbors(poly):
 
 
 def mesh_for_capsid(number):
+    source_path = resolve_capsid(number)
     cache_path = CACHE / f'capsid_{number}_binary_union_s{SMOOTH_ITERATIONS}_f03.vtp'
-    if cache_path.exists():
+    if cache_path.exists() and cache_path.stat().st_mtime >= source_path.stat().st_mtime:
         reader = vtk.vtkXMLPolyDataReader()
         reader.SetFileName(str(cache_path))
         reader.Update()
@@ -155,7 +178,7 @@ def mesh_for_capsid(number):
         poly.DeepCopy(reader.GetOutput())
         return poly
 
-    values, meta = read_mrc(INPUT / f'2005_capsid_{number}.mrc')
+    values, meta = read_mrc(source_path)
     # All positive segmentation IDs were checked; they are retained.
     # These integer region IDs are not physical density amplitudes.
     support = values > 0
@@ -260,10 +283,8 @@ class Scene:
         self.camera.SetViewUp(0, 1, 0)
         self.target0 = np.array([(NX-1)/2, (NY-1)/2, (NZ-1)/2]) * self.spacing
         self.initial_scale = 344.4 * self.spacing[1]
-        self.first_target = np.array(FIRST_POSE[0])*self.spacing
-        self.second_target = np.array(SECOND_POSE[0])*self.spacing
-        self.first_scale = FIRST_POSE[1]/2*self.spacing[1]
-        self.second_scale = SECOND_POSE[1]/2*self.spacing[1]
+        self.closeup_targets = [np.array(c['pose'][0])*self.spacing for c in CLOSEUPS]
+        self.closeup_scales = [c['pose'][1]/2*self.spacing[1] for c in CLOSEUPS]
         self.distance = 18000.0
         self.set_camera(self.target0, self.initial_scale, 0, 0)
         self.renderer.SetAmbient(1, 1, 1)
@@ -301,100 +322,111 @@ class Scene:
         self.image.Modified()
         self.slice_actor.SetPosition(0, 0, z*self.spacing[2])
 
+    def interpolate_camera(self, previous, target, fraction):
+        e = ease(fraction)
+        if previous is None:
+            a_target, a_scale, a_angles = self.target0, self.initial_scale, (0,0)
+        else:
+            a_target = self.closeup_targets[previous]
+            a_scale = self.closeup_scales[previous]
+            a_angles = CLOSEUPS[previous]['pose'][2:]
+        b_target = self.closeup_targets[target]
+        b_scale = self.closeup_scales[target]
+        b_angles = CLOSEUPS[target]['pose'][2:]
+        center = (1-e)*a_target + e*b_target
+        scale = a_scale*np.exp(np.log(b_scale/a_scale)*e)
+        self.set_camera(center, scale,
+                        a_angles[0]+(b_angles[0]-a_angles[0])*e,
+                        a_angles[1]+(b_angles[1]-a_angles[1])*e)
+
+    def show_opacity(self, number, opacity):
+        opacity = float(np.clip(opacity,0,1))
+        actor = self.actors[number-1]
+        actor.SetVisibility(opacity > 0)
+        actor.GetProperty().SetOpacity(opacity)
+
     def frame(self, i):
         if not 0 <= i < TOTAL_FRAMES:
             raise ValueError(f'Frame {i} outside 0..{TOTAL_FRAMES-1}')
-        # Only visibility/opacity and the camera change; no model is moved.
         for actor in self.actors:
             actor.SetVisibility(False)
             actor.GetProperty().SetOpacity(1.0)
+        active = None
         if i < SCAN_END:
             z = SCAN_FRAMES-i if i < SCAN_FRAMES else (i-SCAN_FRAMES if i < 2*SCAN_FRAMES else SCAN_END-i)
             self.slice_actor.VisibilityOn()
             self.set_slice(z)
             self.set_camera(self.target0, self.initial_scale, 0, 0)
-            for a in self.actors:
-                a.SetVisibility(i >= 2*SCAN_FRAMES)
+            for actor in self.actors:
+                actor.SetVisibility(i >= 2*SCAN_FRAMES)
         else:
             z = None
             self.slice_actor.VisibilityOff()
-            if i < OVERVIEW_END:
+            stage = next(stage for stage in STAGES if stage['start'] <= i < stage['end'])
+            local_frame = i-stage['start']
+            if stage['kind'] == 'overview':
                 for actor in self.actors:
                     actor.VisibilityOn()
                 self.set_camera(self.target0, self.initial_scale, 0, 0)
-            elif i < ZOOM_END:
-                u = (i-OVERVIEW_END)/49
-                e = ease(u)
-                for number, actor in enumerate(self.actors, 1):
-                    opacity = 1.0 if number == FIRST_CAPSID else 1-ease(u/0.4)
-                    actor.SetVisibility(opacity > 0)
-                    actor.GetProperty().SetOpacity(opacity)
-                target = (1-e)*self.target0 + e*self.first_target
-                scale = self.initial_scale*np.exp(np.log(self.first_scale/self.initial_scale)*e)
-                self.set_camera(target, scale, FIRST_POSE[2]*e, FIRST_POSE[3]*e)
-            elif i < FIRST_END:
-                self.actors[FIRST_CAPSID-1].VisibilityOn()
-                self.set_camera(self.first_target, self.first_scale,
-                                FIRST_POSE[2]+hold_rock(i-ZOOM_END), FIRST_POSE[3])
-            elif i < TRANSITION_END:
-                u = (i-FIRST_END)/49
-                e = ease(u)
-                for number, opacity in ((FIRST_CAPSID, 1-ease(u/0.4)),
-                                        (SECOND_CAPSID, ease((u-0.6)/0.4))):
-                    actor = self.actors[number-1]
-                    actor.SetVisibility(opacity > 0)
-                    actor.GetProperty().SetOpacity(opacity)
-                target = (1-e)*self.first_target + e*self.second_target
-                scale = self.first_scale*np.exp(np.log(self.second_scale/self.first_scale)*e)
-                self.set_camera(target, scale,
-                                FIRST_POSE[2]+(SECOND_POSE[2]-FIRST_POSE[2])*e,
-                                FIRST_POSE[3]+(SECOND_POSE[3]-FIRST_POSE[3])*e)
             else:
-                self.actors[SECOND_CAPSID-1].VisibilityOn()
-                self.set_camera(self.second_target, self.second_scale,
-                                SECOND_POSE[2]+hold_rock(i-TRANSITION_END), SECOND_POSE[3])
-
+                active = stage['target']
+                closeup = CLOSEUPS[active]
+                if stage['kind'] == 'hold':
+                    self.show_opacity(closeup['index'], 1)
+                    self.set_camera(self.closeup_targets[active], self.closeup_scales[active],
+                                    closeup['pose'][2]+hold_rock(local_frame),closeup['pose'][3])
+                else:
+                    u = local_frame/(stage['end']-stage['start']-1)
+                    if stage['kind'] == 'zoom':
+                        for number in range(1,CAPSID_COUNT+1):
+                            self.show_opacity(number,1 if number == closeup['index'] else 1-ease(u/0.4))
+                        self.interpolate_camera(None,active,u)
+                    else:
+                        previous = stage['previous']
+                        self.show_opacity(CLOSEUPS[previous]['index'],1-ease(u/0.4))
+                        self.show_opacity(closeup['index'],ease((u-0.6)/0.4))
+                        self.interpolate_camera(previous,active,u)
+                        if u < 0.5:
+                            active = previous
         self.window.Render()
         self.capture.Modified()
         self.capture.Update()
         raw = vtk_to_numpy(self.capture.GetOutput().GetPointData().GetScalars())
-        frame = Image.fromarray(np.flipud(raw.reshape(self.height, self.width, 3))).copy()
-        self.add_annotations(frame, i, z)
+        frame = Image.fromarray(np.flipud(raw.reshape(self.height,self.width,3))).copy()
+        self.add_annotations(frame,i,z,active)
         return frame
 
-    def add_annotations(self, im, i, z):
-        s=self.scale
-        # Keep the scientific image area unobscured during the slice scans.
-        d=ImageDraw.Draw(im)
-        d.rectangle((0,0,round(238*s),self.height), fill='black')
-        def xy(x,y):return (round(x*s),round(y*s))
+    def add_annotations(self, im, i, z, active):
+        s = self.scale
+        d = ImageDraw.Draw(im)
+        d.rectangle((0,0,round(238*s),self.height),fill='black')
+        def xy(x,y): return (round(x*s),round(y*s))
         def txt(x,y,text,size=19,color='#D5D9E0',bold=False):
-            d.multiline_text(xy(x,y),text,font=font(max(10,round(size*s)),bold),fill=color,spacing=round(7*s))
-        txt(24,30,'HERV-K',24,'white',True)
+            d.multiline_text(xy(x,y),text,font=font(max(10,round(size*s)),bold),
+                             fill=color,spacing=round(7*s))
+        txt(24,30,'Movie S1',24,'white',True)
         txt(24,67,'Tomogram 2005',17,'#A9B1BD')
         if i < 2*SCAN_FRAMES:
-            txt(24,125,'Denoised\ntomographic slices',19)
+            txt(24,125,'Tomographic slices',19)
         elif i < SCAN_END:
             txt(24,125,'Capsid\nsegmentations',19)
         else:
             txt(24,125,'Capsids in 3D',19)
         if 2*SCAN_FRAMES <= i < OVERVIEW_END:
-            d.rounded_rectangle((*xy(24,222),*xy(40,238)),radius=max(2,round(3*s)),fill=YELLOW)
-            txt(24,252,'Polygonal capsids',17,'#EDF0F5')
-            d.rounded_rectangle((*xy(24,305),*xy(40,321)),radius=max(2,round(3*s)),fill=PALE_YELLOW)
-            txt(24,335,'Sushi-roll-like\ncapsids',17,'#EDF0F5')
-            d.rounded_rectangle((*xy(24,414),*xy(40,430)),radius=max(2,round(3*s)),fill=PURPLE)
-            txt(24,444,'Multiple non-nested\ncapsid assemblies',17,'#EDF0F5')
-        elif i >= OVERVIEW_END:
-            first = i < FIRST_END+25
-            color = capsid_color(FIRST_CAPSID if first else SECOND_CAPSID)
-            label = 'Multiple non-nested\ncapsid assemblies' if first else 'Polygonal capsids'
-            d.rounded_rectangle((*xy(24,222),*xy(44,242)),radius=max(2,round(3*s)),fill=color)
-            txt(24,262,label,19,'#EDF0F5',True)
+            # The top gold context particle is generic Polygonal; the full
+            # nested assignment is scoped to the middle particle's close-up.
+            entries=[(222,POLYGONAL_COLOR,'Polygonal'),
+                     (320,SUSHI_COLOR,'Polygonal\n(Sushi-roll-like)'),
+                     (430,MULTI_COLOR,'Multi-capsid\nassemblies')]
+            for y,color,label in entries:
+                d.rounded_rectangle((*xy(24,y),*xy(40,y+16)),radius=max(2,round(3*s)),fill=color)
+                txt(24,y+30,label,17,'#EDF0F5')
+        elif active is not None:
+            c = CLOSEUPS[active]
+            d.rounded_rectangle((*xy(24,222),*xy(44,242)),radius=max(2,round(3*s)),fill=c['color'])
+            txt(24,262,c['label'],19,'#EDF0F5',True)
         if z is not None:
             txt(24,HEIGHT-66,f'Slice {z+1:03d} / {NZ}',15,'#98A2B2')
-            # Scale bar on the black right margin, calibrated to the actual
-            # orthographic world scale (500 A = 50 nm).
             bar=500/(2*self.camera.GetParallelScale()/self.height)
             x=round(1130*s);y=round((HEIGHT-65)*s)
             d.line((x,y,x+bar,y),fill='white',width=max(2,round(4*s)))
@@ -402,60 +434,48 @@ class Scene:
 
 
 def write_metadata():
+    stages={'tomographic_slices':[0,2*SCAN_FRAMES],
+            'capsid_overlay':[2*SCAN_FRAMES,SCAN_END]}
+    stages.update({stage['name']:[stage['start'],stage['end']] for stage in STAGES})
+    classification={1:'Polygonal (nested capsids)',2:'Polygonal',
+                    3:'Polygonal (Sushi-roll-like)',4:'Multi-capsid assemblies'}
     data=dict(
-        title='Native mature HERV-K capsid morphology — tomogram 2005', revision=1,
+        title='Movie S1',dataset='HERV-K mature tomogram 2005',
         source_tomogram=resolve_tomogram().name,
-        source_capsids=[f'2005_capsid_{i}.mrc' for i in range(1,CAPSID_COUNT+1)],
-        reference_video='HERVK_video_2005(1).mp4',
-        reference_video_frames=712, reference_video_duration_seconds=28.48,
-        grid_xyz=[NX,NY,NZ], resolution=[WIDTH,HEIGHT], fps=FPS,
-        frames=TOTAL_FRAMES, duration_seconds=TOTAL_FRAMES/FPS,
-        source_slices={'pass1':[184,1], 'pass2':[0,183], 'pass3':[184,1]},
-        frame_range_convention='start inclusive, end exclusive',
-        stage_frames={'grayscale':[0,2*SCAN_FRAMES],
-                      'capsid_reveal':[2*SCAN_FRAMES,SCAN_END],
-                      'capsid_overview':[SCAN_END,OVERVIEW_END],
-                      'zoom_to_multiple':[OVERVIEW_END,ZOOM_END],
-                      'multiple_non_nested_assemblies':[ZOOM_END,FIRST_END],
-                      'transition_to_polygonal':[FIRST_END,TRANSITION_END],
-                      'polygonal_capsid':[TRANSITION_END,TOTAL_FRAMES]},
+        source_capsids=[resolve_capsid(i).name for i in range(1,CAPSID_COUNT+1)],
+        visual_reference='2005 segmentation.tif (single rendered RGBA image, not a label volume)',
+        grid_xyz=[NX,NY,NZ],resolution=[WIDTH,HEIGHT],fps=FPS,frames=TOTAL_FRAMES,
+        duration_seconds=TOTAL_FRAMES/FPS,note='Tomographic slices',
+        source_slices={'pass1':[184,1],'pass2':[0,183],'pass3':[184,1]},
+        frame_range_convention='start inclusive, end exclusive',stage_frames=stages,
+        stage_seconds={name:[a/FPS,b/FPS] for name,(a,b) in stages.items()},
+        closeup_order=[c['index'] for c in CLOSEUPS],closeups=CLOSEUPS,
         isolated_hold_seconds=8,
         isolated_hold_motion='2 s still; 4 s gentle +/-10 degree yaw rock; 2 s still',
-        closeup_order=['2005_capsid_4.mrc','2005_capsid_1.mrc'],
-        closeup_poses={'2005_capsid_4.mrc':FIRST_POSE,'2005_capsid_1.mrc':SECOND_POSE},
-        pose_units='target XYZ voxel indices; vertical span in Y voxels; yaw/pitch degrees',
-        closeup_background='black; tomogram hidden; only selected capsid volume shown',
-        membrane_surfaces=False,
-        coords='Original MRC physical coordinates; no individual transformations',
-        colors={f'2005_capsid_{i}.mrc':capsid_color(i) for i in range(1,CAPSID_COUNT+1)},
-        terminology={'2005_capsid_1.mrc':'Polygonal capsids',
-                     '2005_capsid_2.mrc':'Polygonal capsids',
-                     '2005_capsid_3.mrc':'Sushi-roll-like capsids',
-                     '2005_capsid_4.mrc':'Multiple non-nested capsid assemblies'},
-        classification_provenance={'2005_capsid_3.mrc':'User explicitly classified screenshot image(3).png',
-                                   'other_capsids':'Original 2005 video and supplied Figure 1A'},
-        palette_reference='Figure category key, consistent with accepted 010 revision 3',
+        pose_units='XYZ voxel indices; vertical span in Y voxels; yaw/pitch degrees',
+        closeup_background='black; tomogram hidden; selected capsid volume only',
+        membrane_surfaces=False,source_data_modified=False,
+        coords='Original MRC physical coordinates; no individual transforms',
+        colors={resolve_capsid(i).name:capsid_color(i) for i in range(1,CAPSID_COUNT+1)},
+        terminology={resolve_capsid(i).name:classification[i] for i in range(1,CAPSID_COUNT+1)},
+        top_particle_note='Cap2 remains gold Polygonal context, without a nested subtype assignment.',
         image_levels=[LOW,HIGH],
+        contrast_reason='Fixed window selected for the newly supplied corrected tomogram intensity distribution.',
         surface_appearance={'ambient':SURFACE_AMBIENT,'diffuse':SURFACE_DIFFUSE,
                             'specular':SURFACE_SPECULAR,'specular_power':28,
                             'key_intensity':KEY_INTENSITY,'light_colors':'neutral',
-                            'key_to_fill_ratio':2.5,'key_to_back_ratio':4,'key_to_head_ratio':5,
-                            'matches':'Accepted 010 revision 3'},
-        visualization_mesh={'construction':'positive-label support, binary 0.5 contour; no outside-volume padding',
-                            'selection':'All positive segmentation labels in all four capsid maps',
-                            'labels':{'2005_capsid_1.mrc':[13],'2005_capsid_2.mrc':[12,15],
-                                      '2005_capsid_3.mrc':[5,6,7],'2005_capsid_4.mrc':[16,19,22,23,24]},
-                            'source_voxels_modified':False,'labels_excluded':[],
+                            'key_to_fill_ratio':2.5,'key_to_back_ratio':4,'key_to_head_ratio':5},
+        visualization_mesh={'construction':'All positive region labels, binary 0.5 contour; no outside-volume padding',
+                            'labels':{'cap1':[13],'cap2':[12,15],'cap3':[5,6,7],
+                                      'cap4':[16,19,22,23,24]},
+                            'labels_excluded':[],'generic_component_filtering':False,
                             'smoothing':'uniform adjacent-vertex averaging',
-                            'iterations':SMOOTH_ITERATIONS,'factor':SMOOTH_FACTOR,
-                            'original_smoothing_recovered':False,
-                            'smoothing_matches_010_review':True,'generic_component_filtering':False},
-        renderer='VTK 9.5.2 / OSMesa; data-derived review render, not executed in ChimeraX',
-        limitations=['No CXS session or original movie script was supplied.',
-                     'Original numeric camera and material settings cannot be recovered exactly.',
-                     'Original scan timing and close-up target order retained; camera path rebuilt with longer holds.',
-                     'Cap1 and cap2 retain the broad polygonal category; no unsupported subtype is assigned.'])
-    (OUT/'HERVK_2005_render_settings.json').write_text(json.dumps(data,indent=2))
+                            'iterations':SMOOTH_ITERATIONS,'factor':SMOOTH_FACTOR},
+        renderer='VTK 9.5.2 / OSMesa; data-derived render, not executed in ChimeraX',
+        limitations=['The original CXS session and numerical camera parameters were not supplied.',
+                     'Camera path is reconstructed for three isolated highlights.',
+                     'Native ChimeraX companion has not been executed in this environment.'])
+    (OUT/'Movie_S1_render_settings.json').write_text(json.dumps(data,indent=2))
 
 
 def main():
@@ -469,7 +489,7 @@ def main():
     scene=Scene(args.width,args.height)
     write_metadata()
     if args.preview:
-        frames=[100,500,552,600,627,702,877,952]
+        frames=[100,500,552,627,702,877,1127,1202]
         thumbs=[]
         for i in frames:
             im=scene.frame(i)
@@ -486,12 +506,12 @@ def main():
             sheet.paste(thumb,(x,y+32))
         sheet.save(PREVIEW/'review_storyboard.png')
     if args.movie:
-        output=OUT/'HERVK_2005_denoised_capsids_review.mp4'
+        output=OUT/'Movie_S1.mp4'
         cmd=['ffmpeg','-y','-v','error','-f','rawvideo','-pix_fmt','rgb24',
              '-s',f'{args.width}x{args.height}','-r',str(FPS),'-i','-',
              '-an','-c:v','libx264','-preset','medium','-crf','17',
              '-pix_fmt','yuv420p','-movflags','+faststart',
-             '-metadata','title=Native mature HERV-K capsids — tomogram 2005',str(output)]
+             '-metadata','title=Movie S1',str(output)]
         process=subprocess.Popen(cmd,stdin=subprocess.PIPE)
         for i in range(TOTAL_FRAMES):
             im=scene.frame(i)

@@ -1,0 +1,245 @@
+{
+  "title": "Movie S1",
+  "dataset": "HERV-K mature tomogram 2005",
+  "source_tomogram": "HervK_mature_2005_1_bin6_corrected.mrc",
+  "source_capsids": [
+    "2005_capsid_1(1).mrc",
+    "2005_capsid_2(1).mrc",
+    "2005_capsid_3(1).mrc",
+    "2005_capsid_4(1).mrc"
+  ],
+  "visual_reference": "2005 segmentation.tif (single rendered RGBA image, not a label volume)",
+  "grid_xyz": [
+    660,
+    656,
+    185
+  ],
+  "resolution": [
+    1312,
+    844
+  ],
+  "fps": 25,
+  "frames": 1327,
+  "duration_seconds": 53.08,
+  "note": "Tomographic slices",
+  "source_slices": {
+    "pass1": [
+      184,
+      1
+    ],
+    "pass2": [
+      0,
+      183
+    ],
+    "pass3": [
+      184,
+      1
+    ]
+  },
+  "frame_range_convention": "start inclusive, end exclusive",
+  "stage_frames": {
+    "tomographic_slices": [
+      0,
+      368
+    ],
+    "capsid_overlay": [
+      368,
+      552
+    ],
+    "capsid_overview": [
+      552,
+      577
+    ],
+    "zoom_to_nested_capsids": [
+      577,
+      627
+    ],
+    "nested_capsids": [
+      627,
+      827
+    ],
+    "zoom_to_sushi_roll_like": [
+      827,
+      877
+    ],
+    "sushi_roll_like": [
+      877,
+      1077
+    ],
+    "zoom_to_multi_capsid_assemblies": [
+      1077,
+      1127
+    ],
+    "multi_capsid_assemblies": [
+      1127,
+      1327
+    ]
+  },
+  "stage_seconds": {
+    "tomographic_slices": [
+      0.0,
+      14.72
+    ],
+    "capsid_overlay": [
+      14.72,
+      22.08
+    ],
+    "capsid_overview": [
+      22.08,
+      23.08
+    ],
+    "zoom_to_nested_capsids": [
+      23.08,
+      25.08
+    ],
+    "nested_capsids": [
+      25.08,
+      33.08
+    ],
+    "zoom_to_sushi_roll_like": [
+      33.08,
+      35.08
+    ],
+    "sushi_roll_like": [
+      35.08,
+      43.08
+    ],
+    "zoom_to_multi_capsid_assemblies": [
+      43.08,
+      45.08
+    ],
+    "multi_capsid_assemblies": [
+      45.08,
+      53.08
+    ]
+  },
+  "closeup_order": [
+    1,
+    3,
+    4
+  ],
+  "closeups": [
+    {
+      "index": 1,
+      "name": "Polygonal (nested capsids)",
+      "label": "Polygonal\n(nested capsids)",
+      "color": "#dfbc0d",
+      "pose": [
+        [
+          249,
+          436,
+          93
+        ],
+        230,
+        -14,
+        10
+      ],
+      "key": "nested_capsids"
+    },
+    {
+      "index": 3,
+      "name": "Polygonal (Sushi-roll-like)",
+      "label": "Polygonal\n(Sushi-roll-like)",
+      "color": "#f9f900",
+      "pose": [
+        [
+          85,
+          377,
+          81
+        ],
+        210,
+        0,
+        0
+      ],
+      "key": "sushi_roll_like"
+    },
+    {
+      "index": 4,
+      "name": "Multi-capsid assemblies",
+      "label": "Multi-capsid\nassemblies",
+      "color": "#7076de",
+      "pose": [
+        [
+          276,
+          232,
+          74
+        ],
+        230,
+        -6,
+        5
+      ],
+      "key": "multi_capsid_assemblies"
+    }
+  ],
+  "isolated_hold_seconds": 8,
+  "isolated_hold_motion": "2 s still; 4 s gentle +/-10 degree yaw rock; 2 s still",
+  "pose_units": "XYZ voxel indices; vertical span in Y voxels; yaw/pitch degrees",
+  "closeup_background": "black; tomogram hidden; selected capsid volume only",
+  "membrane_surfaces": false,
+  "source_data_modified": false,
+  "coords": "Original MRC physical coordinates; no individual transforms",
+  "colors": {
+    "2005_capsid_1(1).mrc": "#dfbc0d",
+    "2005_capsid_2(1).mrc": "#dfbc0d",
+    "2005_capsid_3(1).mrc": "#f9f900",
+    "2005_capsid_4(1).mrc": "#7076de"
+  },
+  "terminology": {
+    "2005_capsid_1(1).mrc": "Polygonal (nested capsids)",
+    "2005_capsid_2(1).mrc": "Polygonal",
+    "2005_capsid_3(1).mrc": "Polygonal (Sushi-roll-like)",
+    "2005_capsid_4(1).mrc": "Multi-capsid assemblies"
+  },
+  "top_particle_note": "Cap2 remains gold Polygonal context, without a nested subtype assignment.",
+  "image_levels": [
+    -1.35,
+    0.3
+  ],
+  "contrast_reason": "Fixed window selected for the newly supplied corrected tomogram intensity distribution.",
+  "surface_appearance": {
+    "ambient": 0.45,
+    "diffuse": 0.6,
+    "specular": 0.05,
+    "specular_power": 28,
+    "key_intensity": 0.82,
+    "light_colors": "neutral",
+    "key_to_fill_ratio": 2.5,
+    "key_to_back_ratio": 4,
+    "key_to_head_ratio": 5
+  },
+  "visualization_mesh": {
+    "construction": "All positive region labels, binary 0.5 contour; no outside-volume padding",
+    "labels": {
+      "cap1": [
+        13
+      ],
+      "cap2": [
+        12,
+        15
+      ],
+      "cap3": [
+        5,
+        6,
+        7
+      ],
+      "cap4": [
+        16,
+        19,
+        22,
+        23,
+        24
+      ]
+    },
+    "labels_excluded": [],
+    "generic_component_filtering": false,
+    "smoothing": "uniform adjacent-vertex averaging",
+    "iterations": 50,
+    "factor": 0.3
+  },
+  "renderer": "VTK 9.5.2 / OSMesa; data-derived render, not executed in ChimeraX",
+  "limitations": [
+    "The original CXS session and numerical camera parameters were not supplied.",
+    "Camera path is reconstructed for three isolated highlights.",
+    "Native ChimeraX companion has not been executed in this environment."
+  ]
+}

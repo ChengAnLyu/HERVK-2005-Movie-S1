@@ -1,7 +1,7 @@
-"""Recreate the HERVK 2005 update in UCSF ChimeraX.
+"""Recreate Movie S1 in UCSF ChimeraX.
 
 Open this file from ChimeraX, not from a system Python interpreter.
-Requires the denoised tomogram and all four uploaded capsid MRC files.
+Requires the corrected tomogram and all four uploaded capsid MRC files.
 The original .cxs session was not supplied. Colors, smoothing, lighting, and
 camera paths below are explicit recreation settings, not recovered settings.
 This script has been checked against official ChimeraX documentation/source,
@@ -29,7 +29,7 @@ SAVE_NATIVE_SESSION = True
 WIDTH, HEIGHT = 1312, 844
 FPS = 25
 SUPERSAMPLE = 1
-CONTRAST_LOW, CONTRAST_HIGH = -0.55, 0.45  # Fixed for every tomogram plane.
+CONTRAST_LOW, CONTRAST_HIGH = -1.35, 0.30  # Fixed for every corrected-tomogram plane.
 
 # Chosen after visual review of the reference/recreation, not recovered from
 # the missing original session. Surface smoothing remains enabled.
@@ -45,27 +45,39 @@ LIGHTING_COMMAND = (
     "ambientIntensity 1.0 intensity 0.5 fillIntensity 0.25 "
     "depthCue false shadows false multiShadow 0 moveWithCamera true")
 
-POLYGONAL_COLOR = "#FFDB0F"
-SUSHI_COLOR = "#FFFF7F"
-MULTIPLE_COLOR = "#8B9CFF"
-POLYGONAL_NAME = "Polygonal capsids"
-SUSHI_NAME = "Sushi-roll-like capsids"
-MULTIPLE_NAME = "Multiple non-nested capsid assemblies"
+MOVIE_TITLE = "Movie S1"
+TOMOGRAM_NOTE = "Tomographic slices"
+NESTED_COLOR = "#dfbc0d"
+SUSHI_COLOR = "#f9f900"
+MULTIPLE_COLOR = "#7076de"
+CONTEXT_COLOR = "#dfbc0d"
+NESTED_NAME = "Polygonal (nested capsids)"
+SUSHI_NAME = "Polygonal (Sushi-roll-like)"
+MULTIPLE_NAME = "Multi-capsid assemblies"
+CONTEXT_NAME = "Polygonal"
 SHOW_CATEGORY_LEGEND = True  # Appears from the first surface reveal onward.
 
-# Assignments follow comparison with the 2005 reference movie and the user's
-# marked screenshot. No category assignments carry over from another dataset.
-CAPSID_CATEGORIES = {1: "polygonal", 2: "polygonal", 3: "sushi", 4: "multiple"}
+# The three named categories follow the user's Movie S1 assignments. The
+# upper context capsid (map 2) has no assigned nested/sushi subtype.
+CAPSID_CATEGORIES = {1: "nested", 2: "context", 3: "sushi", 4: "multiple"}
 CATEGORY_STYLES = {
-    "polygonal": (POLYGONAL_COLOR, POLYGONAL_NAME),
+    "nested": (NESTED_COLOR, NESTED_NAME),
     "sushi": (SUSHI_COLOR, SUSHI_NAME),
     "multiple": (MULTIPLE_COLOR, MULTIPLE_NAME),
+    "context": (CONTEXT_COLOR, CONTEXT_NAME),
 }
+CATEGORY_ORDER = ("nested", "context", "sushi", "multiple")
+# Gold means the broad Polygonal class in the overview. Only the identified
+# middle capsid receives the nested subtype label during its close-up.
+OVERVIEW_LEGEND = (
+    (NESTED_COLOR, "Polygonal"),
+    (SUSHI_COLOR, SUSHI_NAME),
+    (MULTIPLE_COLOR, MULTIPLE_NAME),
+)
 
-# These are REGION LABEL maps. The dataset audit found no membrane-like region
-# to exclude: all positive labels remain, including capsid_2's internal sheet
-# and every separate assembly in capsid_4. Empty selection dictionary = retain
-# all positive labels. The displayed derived BINARY contour remains at 0.5.
+# These are REGION LABEL maps. Empty selection dictionary = retain every
+# positive label, including disconnected pieces. The displayed derived BINARY
+# contour remains at 0.5. Input MRC files are never modified.
 RETAINED_LABELS = {}
 
 # Recreated camera poses. Coordinates are X,Y,Z grid indices in the original
@@ -73,8 +85,9 @@ RETAINED_LABELS = {}
 # All camera movement preserves the relative positions of every capsid.
 OVERVIEW = ((329.5, 327.5, 92.0), 688.8, 0.0, 0.0)
 CLOSEUPS = (
-    {"index": 4, "pose": ((276.0, 232.0, 74.0), 230.0, -6.0, 5.0)},
     {"index": 1, "pose": ((249.0, 436.0, 93.0), 230.0, -14.0, 10.0)},
+    {"index": 3, "pose": ((85.0, 377.0, 81.0), 210.0, 0.0, 0.0)},
+    {"index": 4, "pose": ((276.0, 232.0, 74.0), 230.0, -6.0, 5.0)},
 )
 # Each scan is an explicit sequence of zero-based Z indices. This preserves
 # the reference timing even if a source scan repeats or skips an index.
@@ -88,10 +101,13 @@ ROCK_DEGREES = 10.0
 FADE_FRAMES = 20
 
 TOMOGRAM_FILES = (
-    "_n2n_unet-medium_HervK_mature_2005_bin6_even(1).mrc",
-    "_n2n_unet-medium_HervK_mature_2005_bin6_even.mrc",
+    "HervK_mature_2005_1_bin6_corrected(1).mrc",
+    "HervK_mature_2005_1_bin6_corrected.mrc",
 )
-CAPSID_FILES = [f"2005_capsid_{i}.mrc" for i in range(1, 5)]
+CAPSID_FILE_VARIANTS = {
+    index: (f"2005_capsid_{index}(1).mrc", f"2005_capsid_{index}.mrc")
+    for index in range(1, 5)
+}
 EXPECTED_GRID_SIZE = (660, 656, 185)
 
 
@@ -108,13 +124,21 @@ def find_inputs(script_dir):
                   [script_dir, script_dir / "inputs",
                    script_dir.parent.parent / "upload"])
     for directory in candidates:
-        if all((directory / name).is_file() for name in CAPSID_FILES):
-            for name in TOMOGRAM_FILES:
+        capsid_paths = {}
+        for index, variants in CAPSID_FILE_VARIANTS.items():
+            for name in variants:
                 if (directory / name).is_file():
-                    return directory.resolve(), (directory / name).resolve()
+                    capsid_paths[index] = (directory / name).resolve()
+                    break
+        if len(capsid_paths) != len(CAPSID_FILE_VARIANTS):
+            continue
+        for name in TOMOGRAM_FILES:
+            if (directory / name).is_file():
+                return directory.resolve(), (directory / name).resolve(), capsid_paths
     locations = "\n".join(str(p) for p in candidates)
     raise UserError(
-        "Could not find all five HERVK 2005 MRC files. Put them beside this "
+        "Could not find the corrected tomogram and four Movie S1 capsid MRC files. "
+        "Put them beside this "
         "script or set DATA_DIRECTORY near the top of the file. Searched:\n"
         + locations)
 
@@ -225,10 +249,31 @@ def category_for_capsid(index):
     return CATEGORY_STYLES[CAPSID_CATEGORIES[index]]
 
 
-def legend_commands(stage, visible=True):
+def title_commands():
+    """The title is rebuilt at every label change, with no added frame wait."""
+    return [
+        f"2dlabels text {quote(MOVIE_TITLE)} color white bgColor black "
+        "margin 3 size 28 xpos 0.025 ypos 0.945 visibility true"
+    ]
+
+
+def tomogram_note_commands():
+    """Generic slice wording for the corrected tomogram."""
+    return [
+        f"2dlabels text {quote(TOMOGRAM_NOTE)} color #D5D9E0 bgColor black "
+        "margin 3 size 19 xpos 0.025 ypos 0.895 visibility true"
+    ]
+
+
+def legend_commands(stage, visible=True, show_slices=False):
     # Labels are rebuilt at stage boundaries, so saved label IDs are not
     # required for replay. The setup requires an empty initial session.
-    lines = ["2dlabels delete all"]
+    # The persistent title is never omitted, including transition gaps.
+    lines = ["2dlabels delete all", *title_commands()]
+    if stage == "slices" or show_slices:
+        lines.extend(tomogram_note_commands())
+    if stage == "slices":
+        return lines
     if not SHOW_CATEGORY_LEGEND or stage is None:
         return lines
     visibility = "true" if visible else "false"
@@ -239,19 +284,13 @@ def legend_commands(stage, visible=True):
                 f"visibility {visibility}")
 
     if stage == "overview":
-        present = set(CAPSID_CATEGORIES.values())
-        row = 0
-        for category in ("polygonal", "sushi", "multiple"):
-            if category not in present:
-                continue
-            color, text = CATEGORY_STYLES[category]
-            ypos = 0.94 - row * 0.045
+        for row, (color, text) in enumerate(OVERVIEW_LEGEND):
+            ypos = 0.84 - row * 0.045
             lines.extend([label("\u25a0", color, 0.025, ypos),
                           label(text, "white", 0.057, ypos)])
-            row += 1
     elif isinstance(stage, int):
         color, text = category_for_capsid(stage)
-        lines.append(label(text, color, 0.025, 0.94, 26))
+        lines.append(label(text, color, 0.025, 0.89, 26))
     else:
         raise ValueError(f"Unknown legend stage: {stage}")
     return lines
@@ -278,14 +317,10 @@ def held_pose(base, frame):
 
 def recording_commands(tomogram, capsids, capsid_volumes, movie_path):
     ts, cs = model_spec(tomogram), model_spec(capsids)
-    first_index, second_index = (closeup["index"] for closeup in CLOSEUPS)
-    first_pose, second_pose = (closeup["pose"] for closeup in CLOSEUPS)
-    first = model_spec(capsid_volumes[first_index - 1])
-    second = model_spec(capsid_volumes[second_index - 1])
-    first_name, second_name = (category_for_capsid(i)[1] for i in (first_index, second_index))
+    first_index, first_pose = CLOSEUPS[0]["index"], CLOSEUPS[0]["pose"]
     first_z = SCAN_Z_INDICES[0][0]
     lines = [
-        "# Generated by HERVK_2005_native_setup.py. Run in the prepared scene.",
+        "# Generated by Movie_S1_native_setup.py. Run in the prepared scene.",
         "# All camera frames are explicit, so no original .cxs views are implied.",
         f"windowsize {WIDTH} {HEIGHT}",
         "set bgColor black", "clip off", "camera ortho", LIGHTING_COMMAND,
@@ -300,7 +335,7 @@ def recording_commands(tomogram, capsids, capsid_volumes, movie_path):
         f"volume {ts} style image color white colorMode l8 step 1 planes z,{first_z}",
         f"volume {ts} level {CONTRAST_LOW},0 level {CONTRAST_HIGH},1 "
         "colormapExtendLeft true colormapExtendRight true showOutlineBox false",
-        "2dlabels delete all",
+        *legend_commands("slices"),
         camera_commands(tomogram, OVERVIEW),
         "wait 1",  # Outside recording: flush setup and create display resources.
         f"movie record size {WIDTH},{HEIGHT} format png supersample {SUPERSAMPLE}",
@@ -312,7 +347,7 @@ def recording_commands(tomogram, capsids, capsid_volumes, movie_path):
         lines.append(f"# Frames {current_frame}-{end_frame}: scan pass {pass_index + 1}.")
         if pass_index == 2:
             lines.append(f"show {cs} models")
-            lines.extend(legend_commands("overview"))
+            lines.extend(legend_commands("overview", show_slices=True))
         for z_index in z_indices:
             lines.append(f"volume {ts} planes z,{z_index}; wait 1")
         current_frame += len(z_indices)
@@ -320,7 +355,8 @@ def recording_commands(tomogram, capsids, capsid_volumes, movie_path):
     lines.extend([
         f"# Frames {current_frame}-{current_frame + OVERVIEW_FRAMES - 1}: capsids on black.",
         f"hide {ts} models", "set bgColor black",
-        f"transparency {cs} 0 target s", f"wait {OVERVIEW_FRAMES}",
+        f"transparency {cs} 0 target s", *legend_commands("overview"),
+        f"wait {OVERVIEW_FRAMES}",
     ])
     current_frame += OVERVIEW_FRAMES
     lines.append(f"# Frames {current_frame}-{current_frame + ZOOM_FRAMES - 1}: zoom to capsid_{first_index}.")
@@ -331,36 +367,42 @@ def recording_commands(tomogram, capsids, capsid_volumes, movie_path):
         lines.append(camera_commands(tomogram, pose) + "; wait 1")
     current_frame += ZOOM_FRAMES
 
-    lines.append(f"# Frames {current_frame}-{current_frame + HOLD_FRAMES - 1}: {first_name} alone.")
-    for frame in range(HOLD_FRAMES):
-        lines.append(camera_commands(tomogram, held_pose(first_pose, frame)) + "; wait 1")
-    current_frame += HOLD_FRAMES
+    for closeup_number, closeup in enumerate(CLOSEUPS):
+        index, target_pose = closeup["index"], closeup["pose"]
+        target = model_spec(capsid_volumes[index - 1])
+        name = category_for_capsid(index)[1]
+        if closeup_number:
+            previous = CLOSEUPS[closeup_number - 1]
+            previous_pose = previous["pose"]
+            previous_model = model_spec(capsid_volumes[previous["index"] - 1])
+            lines.append(
+                f"# Frames {current_frame}-{current_frame + TRANSITION_FRAMES - 1}: "
+                f"capsid_{previous['index']} to capsid_{index}, fixed model coordinates.")
+            lines.extend(legend_commands(None))
+            for frame in range(TRANSITION_FRAMES):
+                if frame < FADE_FRAMES:
+                    percent = 100.0 * (frame + 1) / FADE_FRAMES
+                    lines.append(f"transparency {previous_model} {percent:.8g} target s")
+                elif frame == FADE_FRAMES:
+                    lines.append(f"hide {previous_model} models")
+                if frame >= TRANSITION_FRAMES - FADE_FRAMES:
+                    if frame == TRANSITION_FRAMES - FADE_FRAMES:
+                        lines.append(f"show {target} models")
+                        lines.extend(legend_commands(index))
+                    percent = 100.0 * (TRANSITION_FRAMES - frame - 1) / FADE_FRAMES
+                    lines.append(f"transparency {target} {percent:.8g} target s")
+                pose = interpolate_pose(previous_pose, target_pose,
+                                        (frame + 1) / TRANSITION_FRAMES)
+                lines.append(camera_commands(tomogram, pose) + "; wait 1")
+            current_frame += TRANSITION_FRAMES
 
-    lines.append(f"# Frames {current_frame}-{current_frame + TRANSITION_FRAMES - 1}: move between fixed positions.")
-    lines.extend(legend_commands(None))
-    for frame in range(TRANSITION_FRAMES):
-        if frame < FADE_FRAMES:
-            percent = 100.0 * (frame + 1) / FADE_FRAMES
-            lines.append(f"transparency {first} {percent:.8g} target s")
-        elif frame == FADE_FRAMES:
-            lines.append(f"hide {first} models")
-        if frame >= TRANSITION_FRAMES - FADE_FRAMES:
-            if frame == TRANSITION_FRAMES - FADE_FRAMES:
-                lines.append(f"show {second} models")
-                lines.extend(legend_commands(second_index))
-            percent = 100.0 * (TRANSITION_FRAMES - frame - 1) / FADE_FRAMES
-            lines.append(f"transparency {second} {percent:.8g} target s")
-        pose = interpolate_pose(first_pose, second_pose,
-                                (frame + 1) / TRANSITION_FRAMES)
-        lines.append(camera_commands(tomogram, pose) + "; wait 1")
-    current_frame += TRANSITION_FRAMES
-
-    lines.append(f"# Frames {current_frame}-{current_frame + HOLD_FRAMES - 1}: {second_name} alone.")
-    lines.extend(isolate_commands(capsid_volumes, second_index))
-    lines.append(f"transparency {second} 0 target s")
-    for frame in range(HOLD_FRAMES):
-        lines.append(camera_commands(tomogram, held_pose(second_pose, frame)) + "; wait 1")
-    current_frame += HOLD_FRAMES
+        lines.append(f"# Frames {current_frame}-{current_frame + HOLD_FRAMES - 1}: {name} alone.")
+        lines.extend(isolate_commands(capsid_volumes, index))
+        lines.extend(legend_commands(index))
+        lines.append(f"transparency {target} 0 target s")
+        for frame in range(HOLD_FRAMES):
+            lines.append(camera_commands(tomogram, held_pose(target_pose, frame)) + "; wait 1")
+        current_frame += HOLD_FRAMES
     lines.extend([
         "movie stop", "movie status",
         f"movie encode {quote(movie_path)} framerate {FPS} quality high wait true",
@@ -381,19 +423,19 @@ def main():
         raise UserError("The hold must include at least two frames for the gentle rock")
     if not 0 < 2 * FADE_FRAMES <= TRANSITION_FRAMES:
         raise UserError("The two fades must fit within TRANSITION_FRAMES")
-    expected_indices = set(range(1, len(CAPSID_FILES) + 1))
+    expected_indices = set(CAPSID_FILE_VARIANTS)
     if set(CAPSID_CATEGORIES) != expected_indices:
         raise UserError("Each capsid map must have exactly one category assignment")
     if not set(CAPSID_CATEGORIES.values()).issubset(CATEGORY_STYLES):
         raise UserError("A capsid category has no defined name/color")
-    if len(CLOSEUPS) != 2 or any(c["index"] not in expected_indices for c in CLOSEUPS):
-        raise UserError("Configure two close-ups using valid capsid map indices")
+    if len(CLOSEUPS) != 3 or any(c["index"] not in expected_indices for c in CLOSEUPS):
+        raise UserError("Configure three close-ups using valid capsid map indices")
     if len(SCAN_Z_INDICES) != 3 or any(not scan for scan in SCAN_Z_INDICES):
         raise UserError("Configure the three nonempty scan-index sequences")
     if any(z < 0 or z >= EXPECTED_GRID_SIZE[2] for scan in SCAN_Z_INDICES for z in scan):
         raise UserError("A scan Z index is outside the expected tomogram grid")
     script_dir = Path(__file__).resolve().parent
-    input_dir, tomogram_path = find_inputs(script_dir)
+    input_dir, tomogram_path, capsid_paths = find_inputs(script_dir)
     output_dir = (Path(OUTPUT_DIRECTORY).expanduser() if OUTPUT_DIRECTORY else
                   script_dir / "native_output").resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -405,17 +447,17 @@ def main():
             f"the tomogram has grid size {tomogram.data.size}")
 
     capsid_volumes = []
-    for index, filename in enumerate(CAPSID_FILES, start=1):
+    for index in sorted(capsid_paths):
         color, category = category_for_capsid(index)
         capsid_volumes.append(make_capsid_surface(
-            input_dir / filename, tomogram, color, category, index))
+            capsid_paths[index], tomogram, color, category, index))
     groups = []
-    for category in ("polygonal", "sushi", "multiple"):
+    for category in CATEGORY_ORDER:
         volumes = [volume for index, volume in enumerate(capsid_volumes, start=1)
                    if CAPSID_CATEGORIES[index] == category]
         if volumes:
             groups.append(session.models.add_group(volumes, name=CATEGORY_STYLES[category][1]))
-    capsids = session.models.add_group(groups, name="HERVK 2005 capsids")
+    capsids = session.models.add_group(groups, name="Movie S1 capsids")
 
     run(session, f"windowsize {WIDTH} {HEIGHT}")
     run(session, "set bgColor black; clip off; camera ortho; graphics silhouettes false")
@@ -428,26 +470,28 @@ def main():
         "colormapExtendLeft true colormapExtendRight true showOutlineBox false")
     run(session, camera_commands(tomogram, OVERVIEW))
 
-    for command in legend_commands("overview", visible=False):
+    for command in legend_commands("slices"):
         run(session, command)
     run(session, "wait 1")
 
-    movie_path = output_dir / "HERVK_2005_native_updated.mp4"
-    record_path = output_dir / "HERVK_2005_native_record.cxc"
+    movie_path = output_dir / "Movie_S1_native.mp4"
+    record_path = output_dir / "Movie_S1_native_record.cxc"
     commands = recording_commands(tomogram, capsids, capsid_volumes, movie_path)
     record_path.write_text("\n".join(commands), encoding="utf-8")
     if SAVE_NATIVE_SESSION:
-        run(session, "save " + quote(output_dir / "HERVK_2005_native_ready.cxs"))
+        run(session, "save " + quote(output_dir / "Movie_S1_native_ready.cxs"))
     session.logger.info("Native recording script: " + str(record_path))
-    frame_count = sum(map(len, SCAN_Z_INDICES)) + OVERVIEW_FRAMES + ZOOM_FRAMES + 2 * HOLD_FRAMES + TRANSITION_FRAMES
+    frame_count = (sum(map(len, SCAN_Z_INDICES)) + OVERVIEW_FRAMES + ZOOM_FRAMES
+                   + len(CLOSEUPS) * HOLD_FRAMES + (len(CLOSEUPS) - 1) * TRANSITION_FRAMES)
     session.logger.info(
-        "HERVK 2005: fixed contrast -0.55 to 0.45; all positive region labels retained; "
+        f"Movie S1: corrected tomogram {tomogram_path.name}; fixed contrast "
+        f"{CONTRAST_LOW} to {CONTRAST_HIGH}; all positive region labels retained; "
         "original grid alignment retained; no membrane surface; "
         f"surface smoothing {SMOOTHING_ITERATIONS} iterations at {SMOOTHING_FACTOR}; "
-        "capsids 1/2 polygonal yellow, capsid 3 sushi-roll-like pale yellow, "
-        "capsid 4 multiple non-nested purple; "
+        "capsid 1 nested and capsid 2 generic polygonal gold; capsid 3 sushi-roll-like "
+        "yellow; capsid 4 multi-capsid assemblies purple; "
         "brighter neutral lighting; black close-up background; "
-        "eight-second individual holds of capsid 4 then capsid 1; "
+        "eight-second individual holds of capsids 1, 3, then 4; persistent Movie S1 title; "
         f"{frame_count} frames / {frame_count / FPS:.2f} seconds.")
     if RECORD_MOVIE:
         # The actual recording runs as a native command script, with explicit

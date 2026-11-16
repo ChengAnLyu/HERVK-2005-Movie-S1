@@ -1,0 +1,123 @@
+Movie S1 — mature HERV-K capsid morphologies
+==========================================
+
+DELIVERABLE
+Movie_S1.mp4
+1312 x 844 pixels; 25 frames/second; 1327 frames; 53.08 seconds; no audio.
+The title "Movie S1" remains visible throughout. The opening note reads
+"Tomographic slices."
+
+HIGHLIGHTS, TERMINOLOGY, AND EXACT MATERIAL COLORS
+1. Middle capsid, 2005_capsid_1(1).mrc:
+   Polygonal (nested capsids) — #dfbc0d — RGB 223,188,13.
+2. Left capsid, 2005_capsid_3(1).mrc:
+   Polygonal (Sushi-roll-like) — #f9f900 — RGB 249,249,0.
+3. Lower group, 2005_capsid_4(1).mrc:
+   Multi-capsid assemblies — #7076de — RGB 112,118,222.
+
+The upper particle, 2005_capsid_2(1).mrc, remains gold #dfbc0d and is shown as
+generic Polygonal context, matching the supplied TIFF reference. Its subtype
+is not newly assigned. Accordingly, the overview's gold key says "Polygonal";
+the full nested-capsid terminology appears when the middle example is isolated.
+
+The surface material RGB values and legend swatches use the exact requested
+colors. Neutral lighting supplies highlights and shadows that show 3D shape.
+The existing accepted surface appearance is retained: ambient 0.45, diffuse
+0.60, specular 0.05, specular power 28, and key-light intensity 0.82.
+
+INPUTS AND ALIGNMENT
+HervK_mature_2005_1_bin6_corrected.mrc
+2005_capsid_1(1).mrc
+2005_capsid_2(1).mrc
+2005_capsid_3(1).mrc
+2005_capsid_4(1).mrc
+
+The corrected tomogram and four capsid maps share an XYZ grid of 660 x 656 x
+185, approximately 9.324 Angstrom isotropic spacing, zero origins/start
+indices, and orthogonal XYZ axes. Surfaces remain in that original coordinate
+system. Camera movement, visibility, and opacity create the close-ups; no
+individual model is translated, rotated, rescaled, or fitted.
+
+2005 segmentation.tif is a single 701 x 504 RGBA image rendered in ChimeraX.
+It supplies a visual reference for colors and particle arrangement. Surface
+geometry comes from the four 3D MRC label maps.
+
+All positive segmentation labels are retained:
+  map1: 13
+  map2: 12, 15
+  map3: 5, 6, 7
+  map4: 16, 19, 22, 23, 24
+The maps contain integer region IDs. Their positive-label support is converted
+to in-memory binary occupancy and surfaced at 0.5. No component-size filter,
+dust removal, erosion, or padding outside the source grid is applied. All
+provided labels contribute to the surface display, including the internal
+sheet in map2 and the separate assemblies in map4. Source files remain intact.
+
+Surface smoothing is unchanged from the accepted earlier movies: 50 iterations
+with a factor of 0.3, using adjacent-vertex averaging. Surrounding membrane
+surface models are absent. The grayscale tomogram naturally shows membrane
+density during the scanning portion.
+
+CORRECTED-TOMOGRAM DISPLAY
+The new corrected volume uses a fixed grayscale display window of -1.35 to
+0.30 for every frame. Its sampled 0.5th–99.5th percentile range is approximately
+-1.385 to 0.332. The display window maps intensity to brightness while retaining
+the original array values. No additional processing is applied to the tomogram.
+
+TIMELINE
+ 0.00– 7.36 s: tomographic scan, zero-based Z indices 184 to 1.
+ 7.36–14.72 s: reverse scan, Z indices 0 to 183.
+14.72–22.08 s: scan with aligned capsid surfaces, Z indices 184 to 1.
+22.08–23.08 s: all-capsid overview on black.
+23.08–25.08 s: zoom to the middle nested capsid.
+25.08–33.08 s: Polygonal (nested capsids), isolated for eight seconds.
+33.08–35.08 s: transition to the left sushi-roll-like capsid.
+35.08–43.08 s: Polygonal (Sushi-roll-like), isolated for eight seconds.
+43.08–45.08 s: transition to the lower multi-capsid group.
+45.08–53.08 s: Multi-capsid assemblies, isolated for eight seconds.
+
+Each eight-second highlight holds still for two seconds, gently rocks in yaw
+by up to +/-10 degrees for four seconds, then holds still for two seconds.
+All three close-ups use a black background. The scans preserve the original
+2005 movie's 184-frame progression for each pass. Slice numbers are displayed
+as one-based values out of 185. The scan-stage scale bar is calibrated to 50 nm.
+
+The recreated camera targets, in original XYZ voxel indices, are:
+  overview: (329.5,327.5,92), span688.8, yaw0, pitch0;
+  nested:   (249,436,93),     span230,   yaw-14, pitch10;
+  sushi:    (85,377,81),      span210,   yaw0, pitch0;
+  multi:    (276,232,74),     span230,   yaw-6, pitch5.
+Span is the vertical field of view in Y voxels; angles are degrees.
+
+REPRODUCIBILITY
+The delivered MP4 was rendered directly from the supplied MRC data with
+VTK 9.5.2 and OSMesa. It is a data-derived scientific visualization. The
+original CXS session and numeric camera settings were not supplied; the
+camera sequence is reconstructed for the three requested highlights.
+
+Movie_S1_render_vtk.py is the renderer used for this MP4. Place the five MRCs
+beside the script or in input/ or inputs/. The script prefers capsid filenames
+with (1) and also accepts the explicit names without that suffix. It requires
+NumPy, SciPy, Pillow, VTK 9.5+ with vtkOSOpenGLRenderWindow, an OSMesa runtime,
+and ffmpeg on PATH. Run:
+    python Movie_S1_render_vtk.py --movie
+Use --preview for a storyboard. Output goes to rendered/ by default.
+HERVK_PROJECT_DIR, HERVK_INPUT_DIR, and HERVK_OUTPUT_DIR can choose working,
+input, and output folders. HERVK_VTK_PATH can select a private VTK installation.
+
+Movie_S1_native_setup.py provides the companion native ChimeraX route; see
+README.txt. It prepares the scene, generates a recording script, and can save
+a CXS session and movie when run in ChimeraX. The companion was syntax-checked
+and its generated frame count verified; it has not been executed in ChimeraX
+here. Its native lighting is a visual counterpart to the rendered review.
+
+Movie_S1_render_settings.json records the exact parameters. Four PNG previews
+show the overview and the three highlights. The original MRC inputs are not
+duplicated in the scripts archive.
+
+SUGGESTED CAPTION
+Movie S1. Mature HERV-K capsid morphologies in tomogram 2005. Tomographic
+slices are followed by aligned 3D capsid segmentations. Separate views
+highlight Polygonal (nested capsids) in gold (#dfbc0d), Polygonal
+(Sushi-roll-like) in yellow (#f9f900), and Multi-capsid assemblies in purple
+(#7076de).
